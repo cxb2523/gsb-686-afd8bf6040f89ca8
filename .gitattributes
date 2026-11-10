@@ -1,0 +1,18 @@
+*.json linguist-vendored=false
+*.json linguist-generated=false
+*.json linguist-documentation=false
+*.json linguist-detectable=true
+
+*.ini linguist-vendored=false
+*.ini linguist-generated=false
+*.ini linguist-documentation=false
+*.ini linguist-detectable=true
+
+*.exe linguist-vendored=false
+*.exe linguist-generated=false
+*.exe linguist-documentation=false
+*.exe linguist-detectable=true
+
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.sh text eol=lf

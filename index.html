@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Changeling Imago: face swap for photos and videos</title>
+<meta name="description" content="Changeling puts a face from one photo onto another photo or a whole video, with a completion bar and GFPGAN clean-up. Grown from roop, AGPL-3.0.">
+<meta name="color-scheme" content="dark">
+<meta property="og:title" content="Changeling Imago: face swap for photos and videos">
+<meta property="og:description" content="One face, onto any photo or video.">
+<meta property="og:image" content="samples/changeling_sample.jpg">
+<link rel="icon" href="https://cursedprograms.github.io/Changeling-Studio/site/icon.svg">
+<link rel="stylesheet" href="https://cursedprograms.github.io/Changeling-Studio/site/changeling.css">
+</head>
+<body data-changeling="Imago">
+
+<header>
+  <div class="wrap">
+    <img src="https://cursedprograms.github.io/Changeling-Studio/site/logo.svg" alt="The Changeling logo" width="110" height="110">
+    <div class="eyebrow">Changeling</div>
+    <h1>Imago</h1>
+    <p class="tagline">One face, onto any photo or video</p>
+    <p class="lede">Pick the face, pick the target, press Start. A completion bar shows what it's doing, how
+      far it is and how long it has left; GFPGAN can clean the faces up after.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/CursedPrograms/Changeling-Imago">View on GitHub</a>
+      <a class="btn" href="#use">Use it</a>
+      <a class="btn" href="#family">The Changeling family</a>
+    </div>
+    <div class="tags">
+      <span class="tag">InsightFace inswapper</span><span class="tag">GFPGAN</span><span class="tag">CUDA</span>
+      <span class="tag">ffmpeg</span><span class="tag">Python</span><span class="tag">AGPL-3.0</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="samples">
+    <h2>What it looks like</h2>
+    <p>The target, the face, and Changeling's result. Click to enlarge.</p>
+    <figure class="sheet"><img id="sheet" src="samples/changeling_sample.jpg" alt="A target photo, the face to put on it, and the result" width="2240" height="480" loading="lazy"></figure>
+  </section>
+
+  <section id="use">
+    <h2>Use it</h2>
+    <ol class="steps">
+      <li>Python 3.9 - 3.12 and ffmpeg on your PATH.</li>
+      <li>Start <code>run.bat</code> (or <code>run.ps1</code>, <code>run.sh</code>). The first run sets itself up: a virtual environment, PyTorch, TensorFlow and the models.</li>
+      <li>Select a face, select a target (a picture or a video), press <strong>Start</strong> and pick where the result goes.</li>
+    </ol>
+    <div class="grid two">
+      <div class="card">
+        <h3>The window</h3>
+        <table>
+          <tr><td>Start</td><td>swap, then follow the completion bar</td></tr>
+          <tr><td>Preview</td><td>one frame, before the whole video</td></tr>
+          <tr><td>Many faces</td><td>every face, not just one</td></tr>
+          <tr><td>Keep target fps</td><td>the video's own frame rate</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Without the window</h3>
+        <p><code>run.bat -s face.png -t clip.mp4 -o out.mp4</code> swaps straight away; add <code>--frame-processor face_swapper face_enhancer</code> for GFPGAN.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="about">
+    <h2>Where it comes from</h2>
+    <p>Changeling Imago grew out of <a href="https://github.com/s0md3v/roop">roop</a> by s0md3v, and like roop it's free
+      software under the GNU AGPL-3.0. Its NSFW check stays on. Use it on faces you have the right to use:
+      AI-generated people, yourself, or people who agreed to it.</p>
+  </section>
+  <section id="family"></section>
+</main>
+
+<div id="lightbox" class="lightbox" hidden><img alt=""></div>
+
+<footer id="site-footer">&copy; Cursed Entertainment 2026</footer>
+<script src="https://cursedprograms.github.io/Changeling-Studio/site/family.js"></script>
+<script src="https://cursedprograms.github.io/RIFT/site/footer.js"></script>
+</body>
+</html>
