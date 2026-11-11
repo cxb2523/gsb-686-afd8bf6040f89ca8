@@ -5,7 +5,7 @@ import psutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from queue import Queue
 from types import ModuleType
-from typing import Any, List, Callable
+from typing import Any, List, Callable, Optional
 from tqdm import tqdm
 
 import changeling
@@ -74,11 +74,20 @@ def pick_queue(queue: Queue[str], queue_per_future: int) -> List[str]:
     return queues
 
 
-def process_video(source_path: str, frame_paths: list[str], process_frames: Callable[[str, List[str], Any], None]) -> None:
+def process_video(source_path: str, frame_paths: list[str], process_frames: Callable[[str, List[str], Any], None],
+                  on_frames_done: Optional[Callable[[List[str]], None]] = None) -> None:
     progress_bar_format = '{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]'
     total = len(frame_paths)
+
+    def tracked_process_frames(source_path: str, temp_frame_paths: List[str], update: Callable[[], None]) -> None:
+        # on_frames_done fires only after the whole batch succeeded, so a killed process
+        # loses at most the last batch's progress in the job manifest
+        process_frames(source_path, temp_frame_paths, update)
+        if on_frames_done:
+            on_frames_done(list(temp_frame_paths))
+
     with tqdm(total=total, desc='Processing', unit='frame', dynamic_ncols=True, bar_format=progress_bar_format) as progress:
-        multi_process_frame(source_path, frame_paths, process_frames, lambda: update_progress(progress))
+        multi_process_frame(source_path, frame_paths, tracked_process_frames, lambda: update_progress(progress))
 
 
 STEP = progress.step  # the window's completion bar: one frame done

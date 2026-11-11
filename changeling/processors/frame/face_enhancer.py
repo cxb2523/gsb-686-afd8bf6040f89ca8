@@ -1,5 +1,5 @@
 import os
-from typing import Any, List, Callable
+from typing import Any, List, Callable, Optional
 import sys
 import cv2
 import numpy
@@ -159,5 +159,5 @@ def process_image(source_path: str, target_path: str, output_path: str) -> None:
     cv2.imwrite(output_path, result)
 
 
-def process_video(source_path: str, temp_frame_paths: List[str]) -> None:
-    changeling.processors.frame.core.process_video(None, temp_frame_paths, process_frames)
+def process_video(source_path: str, temp_frame_paths: List[str], on_frames_done: Optional[Callable[[List[str]], None]] = None) -> None:
+    changeling.processors.frame.core.process_video(None, temp_frame_paths, process_frames, on_frames_done)

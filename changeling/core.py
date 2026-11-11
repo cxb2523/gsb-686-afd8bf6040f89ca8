@@ -15,11 +15,13 @@ import platform
 import signal
 import shutil
 import argparse
+import threading
 import onnxruntime
 import tensorflow
 import changeling.globals
 import changeling.metadata
 from changeling import progress
+from changeling import job_state
 import changeling.ui as ui
 from changeling.predictor import predict_image, predict_video
 from changeling.processors.frame.core import get_frame_processors_modules
@@ -180,33 +182,73 @@ def run_job() -> tuple:
     progress.begin('Checking the video')
     if predict_video(target):
         blocked()
-    progress.begin('Extracting frames')
     update_status('Creating temporary resources...')
     create_temp(target)
-    if changeling.globals.keep_fps:
-        fps = detect_fps(target)
-        update_status(f'Extracting frames with {fps} FPS...')
-        extract_frames(target, fps)
+    source = changeling.globals.source_path
+    # resume bookkeeping: a matching manifest from an interrupted run lets us skip the
+    # extraction and the frames already done; anything else means a full rerun
+    manifest = job_state.load_manifest(target)
+    if manifest is not None and job_state.manifest_matches(manifest, source, target, changeling.globals.keep_fps, changeling.globals.temp_frame_format):
+        if get_temp_frame_paths(target):
+            update_status('Resuming an interrupted run...')
+        else:
+            update_status('The previous run\'s frames are gone; starting over...')
+            manifest = None
     else:
-        update_status('Extracting frames with 30 FPS...')
-        extract_frames(target)
+        if manifest is not None:
+            update_status('The previous run\'s progress does not match this job; starting over...')
+        manifest = None
+    if manifest is None:
+        job_state.reset_temp(target)
+        manifest = job_state.new_manifest(source, target, changeling.globals.keep_fps, changeling.globals.temp_frame_format)
+        job_state.save_manifest(target, manifest)
+    if manifest['stage'] == job_state.STAGE_EXTRACTING:
+        progress.begin('Extracting frames')
+        if changeling.globals.keep_fps:
+            fps = detect_fps(target)
+            update_status(f'Extracting frames with {fps} FPS...')
+            extract_frames(target, fps)
+        else:
+            update_status('Extracting frames with 30 FPS...')
+            extract_frames(target)
+        job_state.set_stage(manifest, job_state.STAGE_PROCESSING)
+        job_state.save_manifest(target, manifest)
     temp_frame_paths = get_temp_frame_paths(target)
     if not temp_frame_paths:
         update_status('Frames not found...')
         return False, 'No frames came out of the video.'
-    for frame_processor in get_frame_processors_modules(changeling.globals.frame_processors):
-        progress.begin(STAGES.get(frame_processor.NAME, 'Working'), total=len(temp_frame_paths))
-        update_status('Progressing...', frame_processor.NAME)
-        frame_processor.process_video(changeling.globals.source_path, temp_frame_paths)
-        frame_processor.post_process()
+    if manifest['stage'] == job_state.STAGE_PROCESSING:
+        manifest_lock = threading.Lock()
+        processor_names = list(changeling.globals.frame_processors)
+        for processor_name, frame_processor in zip(processor_names, get_frame_processors_modules(processor_names)):
+            remaining_frame_paths = job_state.remaining_frames(manifest, processor_name, temp_frame_paths)
+            if not remaining_frame_paths:
+                update_status('Already done in a previous run, skipping...', frame_processor.NAME)
+                continue
+            progress.begin(STAGES.get(frame_processor.NAME, 'Working'), total=len(remaining_frame_paths))
+            update_status('Progressing...', frame_processor.NAME)
+
+            def on_frames_done(done_frame_paths: List[str], _processor_name: str = processor_name) -> None:
+                # persist after every finished batch, so a kill loses at most that batch
+                with manifest_lock:
+                    job_state.mark_frames_done(manifest, _processor_name, done_frame_paths)
+                    job_state.save_manifest(target, manifest)
+
+            frame_processor.process_video(source, remaining_frame_paths, on_frames_done=on_frames_done)
+            frame_processor.post_process()
+        job_state.set_stage(manifest, job_state.STAGE_CREATING)
+        job_state.save_manifest(target, manifest)
     progress.begin('Making the video')
     if changeling.globals.keep_fps:
         fps = detect_fps(target)
         update_status(f'Creating video with {fps} FPS...')
-        create_video(target, fps)
+        created = create_video(target, fps)
     else:
         update_status('Creating video with 30 FPS...')
-        create_video(target)
+        created = create_video(target)
+    if not created:
+        update_status('Creating the video failed; the progress so far is kept for another try.')
+        return False, 'Could not create the video from the processed frames.'
     if changeling.globals.skip_audio:
         move_temp(target, changeling.globals.output_path)
         update_status('Skipping audio...')
@@ -216,11 +258,15 @@ def run_job() -> tuple:
             update_status('Restoring audio...')
         else:
             update_status('Restoring audio might cause issues as fps are not kept...')
-        restore_audio(target, changeling.globals.output_path)
-    progress.begin('Cleaning up')
-    update_status('Cleaning temporary resources...')
-    clean_temp(target)
-    if is_video(target):
+        if not restore_audio(target, changeling.globals.output_path):
+            update_status('Restoring the audio failed; the progress so far is kept for another try.')
+            return False, 'Could not restore the audio.'
+    if is_video(target) and changeling.globals.output_path and os.path.isfile(changeling.globals.output_path):
+        # only a fully finished job may clean up: the manifest and (unless --keep-frames) the frames
+        progress.begin('Cleaning up')
+        update_status('Cleaning temporary resources...')
+        job_state.discard_manifest(target)
+        clean_temp(target)
         update_status('Processing to video succeed!')
         return True, f'Done: {os.path.basename(changeling.globals.output_path)}'
     update_status('Processing to video failed!')
@@ -229,16 +275,15 @@ def run_job() -> tuple:
 
 def blocked() -> None:
     update_status('The target was flagged as NSFW, so it was not processed.')
-    if changeling.globals.target_path:
-        clean_temp(changeling.globals.target_path)
+    # no clean_temp here: only a fully successful job may delete the temp frames and manifest
     if not changeling.globals.headless:  # the window stays open: just this job stops
         progress.finish('Refused: the target was flagged as NSFW.', ok=False)
     sys.exit(3)
 
 
 def destroy() -> None:
-    if changeling.globals.target_path:
-        clean_temp(changeling.globals.target_path)
+    # the temp directory stays on purpose: its job manifest lets the next run resume
+    # instead of extracting and processing every frame again
     sys.exit()
 
 

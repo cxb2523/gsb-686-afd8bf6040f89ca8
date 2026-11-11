@@ -61,11 +61,35 @@ def create_video(target_path: str, fps: float = 30) -> bool:
     return run_ffmpeg(commands)
 
 
-def restore_audio(target_path: str, output_path: str) -> None:
+def detect_audio(target_path: str) -> bool:
+    """True when the target has an audio stream. On probe failure, assume it has one so a
+    failed audio restore stays a visible failure instead of a silent video-only output."""
+    command = ['ffprobe', '-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=codec_type', '-of', 'default=noprint_wrappers=1:nokey=1', target_path]
+    try:
+        return bool(subprocess.check_output(command).decode().strip())
+    except Exception:
+        pass
+    return True
+
+
+def restore_audio(target_path: str, output_path: str) -> bool:
+    """True when output_path ended up with the target's audio (or the target has no audio to
+    restore, in which case the silent temp video is the finished result). False when the
+    audio restore genuinely failed - no half-finished file is left behind as 'output'."""
     temp_output_path = get_temp_output_path(target_path)
     done = run_ffmpeg(['-i', temp_output_path, '-i', target_path, '-c:v', 'copy', '-map', '0:v:0', '-map', '1:a:0', '-y', output_path])
-    if not done:
+    if done:
+        return True
+    # ffmpeg may have left a partial output behind; it must not pass for the finished video
+    if os.path.isfile(output_path):
+        try:
+            os.remove(output_path)
+        except OSError:
+            pass
+    if not detect_audio(target_path):
         move_temp(target_path, output_path)
+        return True
+    return False
 
 
 def get_temp_frame_paths(target_path: str) -> List[str]:

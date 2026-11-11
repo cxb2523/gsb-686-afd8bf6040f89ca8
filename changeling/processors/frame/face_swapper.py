@@ -1,5 +1,5 @@
 import os
-from typing import Any, List, Callable
+from typing import Any, List, Callable, Optional
 import cv2
 import insightface
 import threading
@@ -93,9 +93,11 @@ def process_image(source_path: str, target_path: str, output_path: str) -> None:
     cv2.imwrite(output_path, result)
 
 
-def process_video(source_path: str, temp_frame_paths: List[str]) -> None:
+def process_video(source_path: str, temp_frame_paths: List[str], on_frames_done: Optional[Callable[[List[str]], None]] = None) -> None:
     if not changeling.globals.many_faces and not get_face_reference():
-        reference_frame = cv2.imread(temp_frame_paths[changeling.globals.reference_frame_number])
+        # on a resumed run temp_frame_paths holds only the frames still to do, so the
+        # configured reference frame number may point past the end - clamp it
+        reference_frame = cv2.imread(temp_frame_paths[min(changeling.globals.reference_frame_number, len(temp_frame_paths) - 1)])
         reference_face = get_one_face(reference_frame, changeling.globals.reference_face_position)
         set_face_reference(reference_face)
-    changeling.processors.frame.core.process_video(source_path, temp_frame_paths, process_frames)
+    changeling.processors.frame.core.process_video(source_path, temp_frame_paths, process_frames, on_frames_done)
